@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rubiiru- Adding furigana to word documents</title>
+<style>
+:root{--bg:#faf8f4;--fg:#222;--mut:#777;--card:#fff;--bd:#ddd6c8;--ac:#c2410c;--acf:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#171513;--fg:#eee;--mut:#9a948a;--card:#211f1c;--bd:#38342e;--ac:#fb923c;--acf:#1a1008}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:640px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+#drop{border:2px dashed var(--bd);border-radius:10px;padding:28px;text-align:center;cursor:pointer;color:var(--mut)}
+#drop.over{border-color:var(--ac);color:var(--fg)}
+label.r{display:block;margin:4px 0}
+label.r small{color:var(--mut)}
+select,button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:inherit}
+button.pri{background:var(--ac);color:var(--acf);border-color:var(--ac);font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+#msg{margin-top:10px;color:var(--mut);font-size:.95rem}
+#msg.err{color:#dc2626}
+#dl{display:none;margin-top:10px;font-weight:600;color:var(--ac)}
+</style>
+</head>
+<body>
+<main>
+<h1>Rubiiru- Adding furigana to word documents</h1>
+<p class="sub">Add furigana or romaji to a .docx. Everything happens in your browser, so your document is never uploaded.</p>
+
+<div class="card">
+<div id="drop">Drop a .docx here, or click to choose</div>
+<input type="file" id="file" accept=".docx" hidden>
+<p id="fname" class="sub" style="margin:8px 0 0"></p>
+</div>
+
+<div class="card">
+<label class="r"><input type="radio" name="m" value="furigana" checked> Furigana <small>– hiragana over kanji</small></label>
+<label class="r"><input type="radio" name="m" value="both"> Furigana + romaji <small>– hiragana over kanji, romaji over kana words</small></label>
+<label class="r"><input type="radio" name="m" value="romaji"> Romaji only <small>– romaji over every word</small></label>
+<p style="margin:12px 0 0">Reading size
+<select id="size"><option value="0.4">Small</option><option value="0.5" selected>Medium</option><option value="0.65">Large</option></select></p>
+</div>
+
+<button class="pri" id="go" disabled>Add readings</button>
+<div id="msg">Loading dictionary (about 17 MB, first visit only)…</div>
+<a id="dl">Download result</a>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+// ---------- kana / romaji ----------
+const k2h=s=>[...s].map(c=>c>="\u30a1"&&c<="\u30f6"?String.fromCharCode(c.charCodeAt(0)-0x60):c).join("");
+const isKanji=c=>(c>="\u4e00"&&c<="\u9fff")||(c>="\u3400"&&c<="\u4dbf")||"々〆ヶ".includes(c);
+const isKana=c=>c>="\u3041"&&c<="\u30ff";
+const JP=/[\u3040-\u30ff\u3400-\u9fff]/;
+const T={};
+{const v="aiueo",rows={"":"あいうえお",k:"かきくけこ",s:"さしすせそ",t:"たちつてと",n:"なにぬねの",h:"はひふへほ",m:"まみむめも",r:"らりるれろ",g:"がぎぐげご",z:"ざじずぜぞ",d:"だぢづでど",b:"ばびぶべぼ",p:"ぱぴぷぺぽ"};
+for(const[c,ks]of Object.entries(rows))[...ks].forEach((k,i)=>T[k]=c+v[i]);
+Object.assign(T,{し:"shi",ち:"chi",つ:"tsu",ふ:"fu",じ:"ji",ぢ:"ji",づ:"zu",や:"ya",ゆ:"yu",よ:"yo",わ:"wa",を:"o",ん:"n",ゐ:"i",ゑ:"e",ゔ:"vu"});}
+const YOON={ゃ:"a",ゅ:"u",ょ:"o"},SV={ぁ:"a",ぃ:"i",ぅ:"u",ぇ:"e",ぉ:"o"},FOR={ふ:"f",う:"w",ゔ:"v",て:"t",で:"d",と:"t",ど:"d",し:"sh",ち:"ch",じ:"j"};
+function combo(b,s){
+  if(YOON[s]&&T[b]&&T[b].endsWith("i")){const r=T[b];return(["shi","chi","ji"].includes(r)?r.slice(0,-1):r.slice(0,-1)+"y")+YOON[s];}
+  if(SV[s]&&FOR[b])return FOR[b]+SV[s];
+  return null;}
+function romaji(kana){const s=k2h(kana),out=[];let gem=false;
+  for(let i=0;i<s.length;){const c=s[i],n=s[i+1]||"";
+    if(c==="っ"){gem=true;i++;continue;}
+    let r=n?combo(c,n):null;const step=r?2:1;
+    if(r===null){
+      if(c==="ー"){const l=out.length?out[out.length-1]:"";out.push(l&&"aiueo".includes(l.slice(-1))?l.slice(-1):"-");i++;continue;}
+      r=T[c]||SV[c]||YOON[c]||c;
+      if(c==="ん"&&n&&"あいうえおやゆよ".includes(n))r="n'";}
+    if(gem&&r&&!"aiueon'".includes(r[0]))r=r.startsWith("ch")?"t"+r:r[0]+r;
+    gem=false;out.push(r);i+=step;}
+  return out.join("");}
+function spoken(kana,pron){kana=kana||pron||"";
+  if(pron&&pron.length===kana.length){const fx={ハ:"ワ",ヘ:"エ",ヲ:"オ"};return[...kana].map((k,i)=>fx[k]&&pron[i]===fx[k]?fx[k]:k).join("");}
+  return kana;}
+function splitOk(s,r){let lead="",trail="";
+  while(s.length>1&&!isKanji(s[0])&&r.startsWith(k2h(s[0]))){lead+=s[0];s=s.slice(1);r=r.slice(1);}
+  while(s.length>1&&!isKanji(s[s.length-1])&&r.endsWith(k2h(s[s.length-1]))){trail=s[s.length-1]+trail;s=s.slice(0,-1);r=r.slice(0,-1);}
+  const p=[];if(lead)p.push([lead,null]);p.push([s,r]);if(trail)p.push([trail,null]);return p;}
+
+let ready=false;
+function annotate(toks,mode){const items=[];
+  const ok=v=>v&&v!=="*"?v:null;
+  for(const[s,r,p]of toks){const kana=ok(r),pron=ok(p);
+    if([...s].some(isKanji)){const src=kana||pron;
+      if(!src)items.push([s,null]);
+      else if(mode==="romaji")items.push([s,romaji(spoken(kana,pron))]);
+      else items.push(...splitOk(s,k2h(src)));}
+    else if(s&&[...s].every(isKana)&&mode!=="furigana")items.push([s,romaji(spoken(kana||s,pron))]);
+    else items.push([s,null]);}
+  const m=[];
+  for(const[t,r]of items){if(!r&&m.length&&!m[m.length-1][1])m[m.length-1][0]+=t;else m.push([t,r]);}
+  return m;}
+
+// ---------- docx XML ----------
+const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main",XS="http://www.w3.org/XML/1998/namespace";
+const ser=new XMLSerializer();
+const el=(n,a={})=>{const e=document.createElementNS(W,"w:"+n);for(const k in a)e.setAttributeNS(W,"w:"+k,a[k]);return e;};
+const kids=e=>[...e.children];
+const isPlain=e=>e.localName==="r"&&e.namespaceURI===W&&kids(e).some(k=>k.localName==="t")&&kids(e).every(k=>k.localName==="rPr"||k.localName==="t");
+const txt=e=>kids(e).filter(k=>k.localName==="t").map(k=>k.textContent).join("");
+const rprOf=e=>kids(e).find(k=>k.localName==="rPr")||null;
+const key=e=>{const p=rprOf(e);return p?ser.serializeToString(p):"";};
+const AFTER=new Set("highlight u effect bdr shd fitText vertAlign rtl cs em lang eastAsianLayout specVanish oMath".split(" "));
+function mkRun(rp,text,size){const r=el("r");let p=rp?rp.cloneNode(true):null;
+  if(size){if(!p)p=el("rPr");
+    for(const t of["sz","szCs"]){kids(p).filter(k=>k.localName===t).forEach(k=>p.removeChild(k));
+      const ref=kids(p).find(k=>AFTER.has(k.localName));p.insertBefore(el(t,{val:size}),ref||null);}}
+  if(p)r.appendChild(p);
+  const t=el("t");t.textContent=text;t.setAttributeNS(XS,"xml:space","preserve");r.appendChild(t);return r;}
+function mkRuby(rp,base,ruby,hp,ratio){const hps=Math.max(6,Math.round(hp*ratio));
+  const r=el("r");if(rp)r.appendChild(rp.cloneNode(true));
+  const rb=el("ruby"),pr=el("rubyPr");
+  for(const[k,v]of[["rubyAlign","distributeSpace"],["hps",hps],["hpsRaise",hps*2-2],["hpsBaseText",hp],["lid","ja-JP"]])pr.appendChild(el(k,{val:v}));
+  const rt=el("rt");rt.appendChild(mkRun(rp,ruby,hps));
+  const bs=el("rubyBase");bs.appendChild(mkRun(rp,base));
+  rb.append(pr,rt,bs);r.appendChild(rb);return r;}
+function merge(c){let prev=null;
+  for(const e of kids(c)){
+    if(isPlain(e)){
+      if(prev&&key(prev)===key(e)){const t=kids(prev).find(k=>k.localName==="t");
+        t.textContent=txt(prev)+txt(e);t.setAttributeNS(XS,"xml:space","preserve");
+        kids(prev).filter(k=>k.localName==="t"&&k!==t).forEach(k=>prev.removeChild(k));c.removeChild(e);}
+      else prev=e;}
+    else prev=null;}}
+function applyRun(c,e,toks,mode,def,ratio){let n=0;
+  const rp=rprOf(e),sz=rp&&kids(rp).find(k=>k.localName==="sz"),hp=sz?+sz.getAttributeNS(W,"val"):def;
+  for(const[ch,ru]of annotate(toks,mode))c.insertBefore(ru?(n++,mkRuby(rp,ch,ru,hp,ratio)):mkRun(rp,ch),e);
+  c.removeChild(e);return n;}
+async function convert(file,mode,ratio){
+  const zip=await JSZip.loadAsync(await file.arrayBuffer()),parse=s=>new DOMParser().parseFromString(s,"application/xml");
+  let def=21;const st=zip.file("word/styles.xml");
+  if(st){const dd=parse(await st.async("string")).getElementsByTagNameNS(W,"docDefaults")[0],sz=dd&&dd.getElementsByTagNameNS(W,"sz")[0];if(sz)def=+sz.getAttributeNS(W,"val");}
+  let total=0;
+  for(const name of Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*)\.xml$/.test(n))){
+    const d=parse(await zip.file(name).async("string")),jobs=[];
+    for(const p of[...d.getElementsByTagNameNS(W,"p")])
+      for(const c of[p,...kids(p).filter(k=>k.localName==="hyperlink")]){merge(c);
+        for(const e of kids(c))if(isPlain(e)&&JP.test(txt(e)))jobs.push({c,e,text:txt(e)});}
+    const toks=jobs.length?await tokenizeAll(jobs.map(j=>j.text)):[];
+    jobs.forEach((j,i)=>{total+=applyRun(j.c,j.e,toks[i],mode,def,ratio);});
+    zip.file(name,'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+ser.serializeToString(d.documentElement));}
+  const blob=await zip.generateAsync({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",compression:"DEFLATE"});
+  return{blob,total};}
+
+// ---------- dictionary worker (keeps the page responsive while it loads) ----------
+const wsrc=`self.window=self;importScripts("https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js");
+let tk;kuromoji.builder({dictPath:"https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"}).build((e,t)=>{if(e){postMessage({err:String(e)});return;}tk=t;postMessage({ready:1});});
+onmessage=e=>{const{id,texts}=e.data;postMessage({id,out:texts.map(s=>tk.tokenize(s).map(t=>[t.surface_form,t.reading,t.pronunciation]))});};`;
+const worker=new Worker(URL.createObjectURL(new Blob([wsrc],{type:"text/javascript"})));
+let nid=0;const pend={};
+const tokenizeAll=texts=>new Promise(res=>{const id=++nid;pend[id]=res;worker.postMessage({id,texts});});
+
+// ---------- UI ----------
+const $=id=>document.getElementById(id);let file=null;
+const msg=(t,e)=>{$("msg").textContent=t;$("msg").className=e?"err":"";};
+const setFile=f=>{if(!f)return;if(!/\.docx$/i.test(f.name)){msg("Only .docx files are supported. In Word, use Save As > .docx.",1);return;}
+  file=f;$("fname").textContent=f.name;$("dl").style.display="none";if(ready)msg("Ready.");};
+$("drop").onclick=()=>$("file").click();
+$("file").onchange=e=>setFile(e.target.files[0]);
+$("drop").ondragover=e=>{e.preventDefault();$("drop").classList.add("over");};
+$("drop").ondragleave=()=>$("drop").classList.remove("over");
+$("drop").ondrop=e=>{e.preventDefault();$("drop").classList.remove("over");setFile(e.dataTransfer.files[0]);};
+$("go").onclick=async()=>{
+  if(!file){msg("Choose a .docx file first.",1);return;}
+  $("go").disabled=true;msg("Working…");await new Promise(r=>setTimeout(r,30));
+  try{const mode=document.querySelector("input[name=m]:checked").value;
+    const{blob,total}=await convert(file,mode,+$("size").value);
+    const a=$("dl");a.href=URL.createObjectURL(blob);a.download=file.name.replace(/\.docx$/i,"")+"_furigana.docx";a.textContent="Download "+a.download;a.style.display="inline-block";
+    msg(`Done! Annotated ${total} words.`);
+  }catch(e){msg("Failed: "+(e.message||e),1);}
+  $("go").disabled=false;};
+worker.onmessage=e=>{const d=e.data;
+  if(d.ready){ready=true;$("go").disabled=false;msg(file?"Ready.":"Dictionary loaded. Choose a .docx file.");}
+  else if(d.err)msg("Couldn't load the dictionary: "+d.err,1);
+  else{pend[d.id](d.out);delete pend[d.id];}};
+worker.onerror=e=>msg("Dictionary worker failed: "+(e.message||"unknown error"),1);
+</script>
+</body>
+</html>
