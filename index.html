@@ -150,7 +150,10 @@ async function convert(file,mode,ratio){
   return{blob,total};}
 
 // ---------- dictionary worker (keeps the page responsive while it loads) ----------
-const wsrc=`self.window=self;importScripts("https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js");
+const wsrc=`self.window=self;
+const _o=XMLHttpRequest.prototype.open,_fix=new RegExp("^(https?):/(?!/)");
+XMLHttpRequest.prototype.open=function(m,u,...r){return _o.call(this,m,String(u).replace(_fix,"$1://"),...r);};
+importScripts("https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js");
 let tk;kuromoji.builder({dictPath:"https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"}).build((e,t)=>{if(e){postMessage({err:String(e)});return;}tk=t;postMessage({ready:1});});
 onmessage=e=>{const{id,texts}=e.data;postMessage({id,out:texts.map(s=>tk.tokenize(s).map(t=>[t.surface_form,t.reading,t.pronunciation]))});};`;
 const worker=new Worker(URL.createObjectURL(new Blob([wsrc],{type:"text/javascript"})));
