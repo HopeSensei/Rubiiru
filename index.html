@@ -47,9 +47,12 @@ button:disabled{opacity:.5;cursor:default}
 <button class="pri" id="go" disabled>Add readings</button>
 <div id="msg">Loading dictionary (about 17 MB, first visit only)…</div>
 <a id="dl">Download result</a>
+ <div style="margin-top:28px">
+<iframe id='kofiframe' src='https://ko-fi.com/hopesensei/?hidefeed=true&widget=true&embed=true&preview=true' style='border:none;width:100%;padding:4px;background:#f9f9f9;' height='712' title='hopesensei'></iframe>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js">
+</div>
 </main>
-
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</script>
 <script>
 // ---------- kana / romaji ----------
 const k2h=s=>[...s].map(c=>c>="\u30a1"&&c<="\u30f6"?String.fromCharCode(c.charCodeAt(0)-0x60):c).join("");
